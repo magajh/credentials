@@ -12,7 +12,7 @@ attrs==22.2.0
     # via edx-ace
 backoff==1.10.0
     # via analytics-python
-bleach==5.0.1
+bleach==6.0.0
     # via -r requirements/base.in
 certifi==2022.12.7
     # via requests
