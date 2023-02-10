@@ -3,8 +3,6 @@ FROM ubuntu:focal as minimal-system
 # Warning: This file is experimental.
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG SERVICE_VARIANT
-ARG SERVICE_PORT
 
 # Env vars: paver
 # We intentionally don't use paver in this Dockerfile, but Devstack may invoke paver commands
@@ -40,8 +38,8 @@ RUN apt-get update && \
     apt-get -y dist-upgrade && \
     apt-get -y install --no-install-recommends \
         python3 \
-        python3-dev \
-        python3-venv \
+        python3.8-dev \
+        python3.8-venv \
         python3.8 \
         python3.8-minimal \
         libpython3.8 \
@@ -116,6 +114,16 @@ FROM builder-production as builder-development
 COPY requirements/dev.txt /edx/app/credentials/credentials/requirements/dev.txt
 RUN pip install -r /edx/app/credentials/credentials/requirements/dev.txt
 
+
+# Install watchman
+RUN wget https://github.com/facebook/watchman/releases/download/v2020.08.17.00/watchman-v2020.08.17.00-linux.zip && \ 
+    unzip watchman-v2020.08.17.00-linux.zip && \
+    mkdir -p /usr/local/{bin,lib} /usr/local/var/run/watchman && \
+    cp watchman-v2020.08.17.00-linux/bin/* /usr/local/bin && \
+    cp watchman-v2020.08.17.00-linux/lib/* /usr/local/lib && \
+    chmod 755 /usr/local/bin/watchman && \
+    chmod 2777 /usr/local/var/run/watchman
+
 # base stage
 FROM minimal-system as base
 
@@ -123,23 +131,22 @@ FROM minimal-system as base
 COPY --from=builder-production /edx/app/credentials/venvs/credentials /edx/app/credentials/venvs/credentials
 COPY --from=builder-production /edx/app/credentials/nodeenvs/credentials /edx/app/credentials/nodeenvs/credentials
 COPY --from=builder-production /edx/app/credentials/credentials/node_modules /edx/app/credentials/credentials/node_modules
+COPY --from=builder-production /edx/app/credentials/credentials/credentials/static /edx/app/credentials/credentials/credentials/static
 
 USER app
 
 # Production target
 FROM base as production
 ENV CREDENTIALS_PLATFORM_SETTINGS='production'
-ENV SERVICE_VARIANT "${SERVICE_VARIANT}"
-ENV SERVICE_PORT "${SERVICE_PORT}"
-ENV DJANGO_SETTINGS_MODULE="${SERVICE_VARIANT}.settings.$CREDENTIALS_PLATFORM_SETTINGS"
-EXPOSE ${SERVICE_PORT}
+ENV DJANGO_SETTINGS_MODULE="credntials.settings.$CREDENTIALS_PLATFORM_SETTINGS"
+EXPOSE 18150
 CMD gunicorn \
-    -c /edx/app/credentials/credentials/${SERVICE_VARIANT}/docker_${SERVICE_VARIANT}_gunicorn.py \
-    --name ${SERVICE_VARIANT} \
-    --bind=0.0.0.0:${SERVICE_PORT} \
+    -c /edx/app/credentials/credentials/credntials/docker_gunicorn_configuration.py \
+    --name credntials \
+    --bind=0.0.0.0:18150 \
     --max-requests=1000 \
-    --access-logfile \
-    - ${SERVICE_VARIANT}.wsgi:application
+    --log-file - \
+    - credntials.wsgi:application
 
 # Development target
 FROM base as development
@@ -153,7 +160,6 @@ USER root
 RUN touch ../credentials_env
 
 ENV CREDENTIALS_PLATFORM_SETTINGS='devstack'
-ENV SERVICE_VARIANT "${SERVICE_VARIANT}"
-ENV DJANGO_SETTINGS_MODULE="${SERVICE_VARIANT}.settings.$CREDENTIALS_PLATFORM_SETTINGS"
-EXPOSE ${SERVICE_PORT}
-CMD ./manage.py ${SERVICE_VARIANT} runserver 0.0.0.0:${SERVICE_PORT}
+ENV DJANGO_SETTINGS_MODULE="credntials.settings.$CREDENTIALS_PLATFORM_SETTINGS"
+EXPOSE 18150
+CMD while true; do python ./manage.py runserver 0.0.0.0:18150; sleep 2; done
